@@ -1,0 +1,73 @@
+spring:
+  application:
+    name: service-scheduler
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/scheduler}
+    username: ${DB_USER:scheduler}
+    password: ${DB_PASSWORD:scheduler}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+      connection-timeout: ${DB_CONNECTION_TIMEOUT_MS:2000}
+      data-source-properties:
+        options: -c statement_timeout=${DB_STATEMENT_TIMEOUT_MS:5000}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    defer-datasource-initialization: true
+  sql:
+    init:
+      mode: always
+      separator: "^^^ END OF SCRIPT ^^^"
+      schema-locations: classpath:db/constraints.sql
+      data-locations: ${SEED_LOCATIONS:classpath:db/seed/demo.sql}
+  mvc:
+    problemdetails:
+      enabled: true
+    servlet:
+      load-on-startup: 1
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+
+springdoc:
+  default-produces-media-type: application/json
+  writer-with-order-by-keys: true
+
+server:
+  port: ${PORT:8080}
+  shutdown: graceful
+  tomcat:
+    threads:
+      max: ${TOMCAT_MAX_THREADS:50}
+    accept-count: ${TOMCAT_ACCEPT_COUNT:100}
+    max-connections: ${TOMCAT_MAX_CONNECTIONS:500}
+    connection-timeout: 5s
+
+management:
+  server:
+    port: ${MANAGEMENT_PORT:8081}
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+      group:
+        readiness:
+          include: readinessState,db
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
+
+scheduler:
+  booking:
+    max-attempts: 5
+  availability:
+    step-minutes: 15

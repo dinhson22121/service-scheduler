@@ -1,0 +1,8 @@
+target/
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+loadtest/results/*
+!loadtest/results/.gitkeep

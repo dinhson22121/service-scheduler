@@ -1,0 +1,30 @@
+name: loadtest
+
+on:
+  workflow_dispatch:
+    inputs:
+      levels:
+        description: Arrival rates (req/s), comma separated
+        default: '20,50,100'
+      step_seconds:
+        description: Seconds per level
+        default: '30'
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose build app1
+      - run: loadtest/run.sh mixed-ramp ci-smoke
+        env:
+          LEVELS: ${{ inputs.levels }}
+          STEP_SECONDS: ${{ inputs.step_seconds }}
+          STRICT: '1'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: loadtest-results
+          path: loadtest/results
+      - if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.loadtest.yml --profile loadtest down -v

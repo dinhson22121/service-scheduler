@@ -1,0 +1,410 @@
+openapi: 3.1.0
+info:
+  description: Books a service bay and a qualified technician for a service appointment.
+    Errors are RFC 9457 application/problem+json.
+  title: Unified Service Scheduler API
+  version: v1
+servers:
+- description: Same origin
+  url: /
+paths:
+  /api/v1/appointments:
+    post:
+      description: "Assigns a free service bay and a qualified technician for the\
+        \ whole service duration. A vehicle holds at most one appointment at a time,\
+        \ so the vehicle and slot identify a booking: sending the same request again\
+        \ returns the original appointment. If no definitive answer arrives (timeout,\
+        \ 502, 504), the booking may still have been made: send the same request again\
+        \ to learn the outcome."
+      operationId: book
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BookAppointmentRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppointmentResponse"
+          description: "Booked, or the original booking when the same request is repeated"
+          headers:
+            Idempotent-Replayed:
+              description: true when this request had already been booked
+              schema:
+                type: boolean
+              style: simple
+            Location:
+              description: URL of the appointment
+              schema:
+                type: string
+                format: uri
+              style: simple
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Malformed request: invalid parameter, body or header"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Unknown dealership, service type, customer or vehicle"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No suitable bay or qualified technician is free for the whole\
+            \ slot, or the vehicle already has a different appointment that overlaps\
+            \ it"
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Business rule broken: start not in the future, outside opening\
+            \ hours, or vehicle of another customer"
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Temporarily overloaded; retry after the given delay
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying
+              schema:
+                type: integer
+                format: int32
+      summary: Book a service appointment
+      tags:
+      - appointment-controller
+  /api/v1/appointments/{id}:
+    get:
+      operationId: get
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppointmentResponse"
+          description: The appointment
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Malformed request: invalid parameter, body or header"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Unknown appointment
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Temporarily overloaded; retry after the given delay
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying
+              schema:
+                type: integer
+                format: int32
+      summary: Get an appointment
+      tags:
+      - appointment-controller
+  /api/v1/appointments/{id}/cancel:
+    post:
+      description: "Idempotent; frees the bay, technician and vehicle."
+      operationId: cancel
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppointmentResponse"
+          description: "Cancelled, now or earlier"
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Malformed request: invalid parameter, body or header"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Unknown appointment
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: The appointment has already started
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Temporarily overloaded; retry after the given delay
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying
+              schema:
+                type: integer
+                format: int32
+      summary: Cancel an appointment
+      tags:
+      - appointment-controller
+  /api/v1/dealerships/{dealershipId}/appointments:
+    get:
+      operationId: listForDay
+      parameters:
+      - in: path
+        name: dealershipId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: query
+        name: date
+        required: true
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AppointmentResponse"
+          description: "Confirmed and cancelled appointments, by start time"
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Malformed request: invalid parameter, body or header"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Unknown dealership
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Temporarily overloaded; retry after the given delay
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying
+              schema:
+                type: integer
+                format: int32
+      summary: List a dealership's appointments for a local calendar day
+      tags:
+      - appointment-controller
+  /api/v1/dealerships/{dealershipId}/availability:
+    get:
+      description: "Advisory: booking re-checks availability atomically."
+      operationId: availability
+      parameters:
+      - in: path
+        name: dealershipId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: query
+        name: serviceTypeId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: query
+        name: date
+        required: true
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AvailabilityResponse"
+          description: Free start times; empty when nothing fits
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Malformed request: invalid parameter, body or header"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Unknown dealership or service type
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Temporarily overloaded; retry after the given delay
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying
+              schema:
+                type: integer
+                format: int32
+      summary: Free start times for a service on a local calendar day
+      tags:
+      - availability-controller
+components:
+  schemas:
+    AppointmentResponse:
+      type: object
+      properties:
+        cancelledAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        customerId:
+          type: integer
+          format: int64
+        dealershipId:
+          type: integer
+          format: int64
+        endTime:
+          type: string
+          format: date-time
+        id:
+          type: string
+          format: uuid
+        serviceBayId:
+          type: integer
+          format: int64
+        serviceTypeId:
+          type: integer
+          format: int64
+        startTime:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum:
+          - CONFIRMED
+          - CANCELLED
+        technicianId:
+          type: integer
+          format: int64
+        vehicleId:
+          type: integer
+          format: int64
+    AvailabilityResponse:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        dealershipId:
+          type: integer
+          format: int64
+        durationMinutes:
+          type: integer
+          format: int64
+        serviceTypeId:
+          type: integer
+          format: int64
+        slots:
+          type: array
+          items:
+            $ref: "#/components/schemas/Slot"
+        timezone:
+          type: string
+    BookAppointmentRequest:
+      type: object
+      properties:
+        customerId:
+          type: integer
+          format: int64
+          exclusiveMinimum: 0
+        dealershipId:
+          type: integer
+          format: int64
+          exclusiveMinimum: 0
+        serviceTypeId:
+          type: integer
+          format: int64
+          exclusiveMinimum: 0
+        startTime:
+          type: string
+          format: date-time
+          description: "Desired start, ISO-8601 with offset"
+          example: 2026-10-05T09:00:00+01:00
+        vehicleId:
+          type: integer
+          format: int64
+          exclusiveMinimum: 0
+      required:
+      - customerId
+      - dealershipId
+      - serviceTypeId
+      - startTime
+      - vehicleId
+    ProblemDetail:
+      type: object
+      description: RFC 9457 problem details
+      properties:
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri
+        status:
+          type: integer
+          format: int32
+        title:
+          type: string
+        type:
+          type: string
+          format: uri
+    Slot:
+      type: object
+      properties:
+        endTime:
+          type: string
+          format: date-time
+        startTime:
+          type: string
+          format: date-time
